@@ -42,7 +42,7 @@ device = 'cuda:0' if use_cuda else 'cpu'
 device = device.replace('cuda', 'gpu')
 device = paddle.set_device(device)
 
-
+#使用数据集BindingDB或Davis
 def get_cls_db(db_name):
     """
     Get benchmark dataset for classification
@@ -54,6 +54,7 @@ def get_cls_db(db_name):
     elif db_name.lower() == 'cls_bindingdb':
         return './intermolecular dataset/classification/BindingDB'
 
+#模型测试
 def cls_test(data_generator, model):
     y_pred = []
     y_label = []
@@ -62,25 +63,25 @@ def cls_test(data_generator, model):
 
     model.eval()
     for _, data in enumerate(data_generator):
-        d_out, mask_d_out, t_out, mask_t_out, label = data
-        temp = model(d_out.long().cuda(), t_out.long().cuda(), mask_d_out.long().cuda(), mask_t_out.long().cuda())
+        d_out, mask_d_out, t_out, mask_t_out, label = data #提取数据
+        temp = model(d_out.long().cuda(), t_out.long().cuda(), mask_d_out.long().cuda(), mask_t_out.long().cuda()) #加入到GPU中
         predicts = paddle.squeeze(sig(temp))
         label = paddle.cast(label, "float32")
 
-        loss = loss_fn(predicts, label)
+        loss = loss_fn(predicts, label) #计算Cost
         loss_res += loss
         count += 1
 
-        predicts = predicts.detach().cpu().numpy()
+        predicts = predicts.detach().cpu().numpy() #进行DPI预测
         label_id = label.to('cpu').numpy()
         y_label = y_label + label_id.flatten().tolist()
         y_pred = y_pred + predicts.flatten().tolist()
-    loss = loss_res / count
+    loss = loss_res / count #计算整体loss
 
-    fpr, tpr, threshold = roc_curve(y_label, y_pred)
-    precision = tpr / (tpr + fpr)
-    f1 = 2 * precision * tpr / (tpr + precision + 1e-05)
-    optimal_threshold = threshold[5:][np.argmax(f1[5:])]
+    fpr, tpr, threshold = roc_curve(y_label, y_pred) #计算fpr与tpr，可用于绘制ROC曲线
+    precision = tpr / (tpr + fpr) #计算Precision
+    f1 = 2 * precision * tpr / (tpr + precision + 1e-05) #计算F1-score
+    optimal_threshold = threshold[5:][np.argmax(f1[5:])] #集行梯度下降
     print("Optimal threshold: {}".format(optimal_threshold))
 
     y_pred_res = [(1 if i else 0) for i in y_pred >= optimal_threshold]
@@ -106,12 +107,12 @@ def cls_test(data_generator, model):
 
 # Set loss function
 sig = paddle.nn.Sigmoid()
-loss_fn = paddle.nn.BCELoss() #binary cross entropy
+loss_fn = paddle.nn.BCELoss() #使用binary cross entropy
 
 
 subdata_Net = 'H_Net'
 
-
+#为MTsmo模块预定义参数
 parser = ArgumentParser(description='Start Training...')
 parser.add_argument('-b', '--batchsize', default=128, type=int, metavar='N', help='Batch size')
 parser.add_argument('-j', '--workers', default=0, type=int, metavar='N', help='Number of workers')
@@ -123,7 +124,7 @@ parser.add_argument('--model_config', default='./Trans_config.json', type=str)
 args = parser.parse_args()
 
 
-
+#为GCN模块预定义参数
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_integer('neg_sample_size', 1, 'Negative sample size.')
@@ -158,6 +159,7 @@ F1_10_list    = []
 MSE_10_list   = []
 MAE_10_list   = []
 
+#倒入微观与宏观的全部数据
 # About drug
 drug_drug_path = 'attribute dataset/H_Net/sevenNets/mat_drug_drug.txt'
 drug_drug_sim_chemical_path = 'attribute dataset/H_Net/sim_network/Sim_mat_Drugs.txt'
@@ -182,12 +184,14 @@ drug_sideEffect_path = 'attribute dataset/H_Net/sevenNets/mat_drug_se.txt'
 # Step1:Construct the graph(read the data...)
 print("HGCN Moudle data loading")
 # drug_drug_adj and protein_protein_adj combine the simNets and interactions
+#以图的形式表示药物-药物相互作用
 drug_drug_adj = loadData.Load_Drug_Adj_Togerther(drug_drug_path=drug_drug_path,
                                                  drug_drug_sim_chemical_path=drug_drug_sim_chemical_path,
                                                  drug_drug_sim_interaction_path=drug_drug_sim_interaction_path,
                                                  drug_drug_sim_se_path=drug_drug_sim_se_path,
                                                  drug_drug_sim_disease_path=drug_drug_sim_disease_path)
 
+#以图的形式表示蛋白质-蛋白质相互作用
 protein_protein_adj = loadData.Load_Protein_Adj_Togerther(protein_protein_path=protein_protein_path,
                                                           protein_protein_sim_sequence_path=protein_protein_sim_sequence_path,
                                                           protein_protein_sim_disease_path=protein_protein_sim_disease_path,
@@ -242,6 +246,7 @@ testing_data = DataEncoder(testing_set.index.values, testing_set.Label.values, t
 testing_loader = utils.BaseDataLoader(testing_data, batch_size=args.batchsize, shuffle=False,
                                       drop_last=False, num_workers=args.workers)
 
+#开始训练，内嵌的10折交叉验证
 for seed in range(0, 10):
     val_test_size = 0.1
     print('Current seed is :', seed)
