@@ -6,7 +6,6 @@ Identification of active candidate compounds for target proteins, also called dr
 python==3.7.12
 tensorflow==1.15.0
 visualdl==2.1.1
-
 scikit-learn==1.0.2
 scipy==1.7.3
 subword-nmt==0.3.8
